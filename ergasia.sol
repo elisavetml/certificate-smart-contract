@@ -214,7 +214,16 @@ contract ergasia {
     }
 
     function checkCertificateStatus(uint256 _certificateId) public returns (string memory) {
+        Certificate memory cert = certificates[_certificateId];
         require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
+        require(
+            msg.sender == admin ||
+            users[msg.sender].role == Role.Admin ||
+            cert.issuer == msg.sender ||
+            cert.holder == msg.sender ||
+            users[msg.sender].role == Role.Auditor,
+            "Not authorized"
+        );
         
         if (certificates[_certificateId].revoked) {
             return "Revoked";
@@ -242,6 +251,7 @@ contract ergasia {
             msg.sender == admin ||
             cert.issuer == msg.sender ||
             cert.holder == msg.sender ||
+            users[msg.sender].role == Role.Admin ||
             users[msg.sender].role == Role.Auditor ||
             users[msg.sender].role == Role.Verifier ||
             users[msg.sender].role == Role.RevocationOfficer,
