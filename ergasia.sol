@@ -48,7 +48,11 @@ contract ergasia {
 
     // Modifiers
     modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin");
+        require(
+            msg.sender == admin ||
+            users[msg.sender].role == Role.Admin,
+             "Only admin"
+        );
         _;
     }
 
@@ -67,12 +71,22 @@ contract ergasia {
         _;
     }
 
+    modifier onlyAdminOrAuditor {
+        require(
+            msg.sender == admin ||
+            users[msg.sender].role == Role.Admin ||
+            users[msg.sender].role == Role.Auditor,
+            "Only Admin or Auditor"
+        );
+        _;
+    }
+
     modifier onlyAuditorOrVerifier() {
         require(
             users[msg.sender].role == Role.Auditor || 
             users[msg.sender].role == Role.Verifier || 
             msg.sender == admin,
-            "Not authorized as Auditor or Verifier"
+            "Only Auditor or Verifier"
         );
         require(users[msg.sender].active, "User is not active");
         _;
@@ -86,7 +100,7 @@ contract ergasia {
     // Events
     event UserRegistered(address indexed userAddress, string name, Role role);
     event CertificateIssued(uint256 indexed certificateId, address indexed issuer, address indexed holder);
-    event CertificateVerified(uint256 indexed certificateId);
+    event CertificateVerified(uint256 indexed certificateId, string indexed fileHash);
     event CertificateRevoked(uint256 indexed certificateId, string reason);
     event CertificateExpired(uint256 certificateId);
 
@@ -110,7 +124,7 @@ contract ergasia {
         emit UserRegistered(_userAddress, _name, _role);
     }
 
-    function getAllUsers() public view onlyAdmin returns (User[] memory) {
+    function getAllUsers() public view onlyAdminOrAuditor returns (User[] memory) {
         uint256 totalUsers = allUsers.length;
         User[] memory resultList = new User[](totalUsers);
 
@@ -156,7 +170,7 @@ contract ergasia {
         emit CertificateIssued(_certificateId, msg.sender, _holder);
     }
 
-    function getAllCertificates() public view onlyAdmin returns (Certificate[] memory) {
+    function getAllCertificates() public view onlyAdminOrAuditor returns (Certificate[] memory) {
         uint256 totalCertificates = allCertificates.length;
         Certificate[] memory resultList = new Certificate[](totalCertificates);
 
@@ -175,14 +189,16 @@ contract ergasia {
         return holderCertificates[_holder];
     }
 
-    function verifyCertificateById(uint256 _certificateId) public view onlyAuditorOrVerifier returns (Certificate memory) {
+    function verifyCertificateById(uint256 _certificateId) public onlyAuditorOrVerifier returns (Certificate memory) {
         require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
+        emit CertificateVerified(_certificateId, "");
         return certificates[_certificateId];
     }
 
-    function verifyCertificateByHash(string memory _fileHash) public view onlyAuditorOrVerifier returns (Certificate memory) {
+    function verifyCertificateByHash(string memory _fileHash) public onlyAuditorOrVerifier returns (Certificate memory) {
         uint256 certificateId = certificateByHash[_fileHash];
         require(certificateId != 0, "Certificate not found");
+        emit CertificateVerified(0, _fileHash);
         return certificates[certificateId];
     }
 
@@ -197,18 +213,25 @@ contract ergasia {
         emit CertificateRevoked(_certificateId, _reason);
     }
 
-    function checkCertificateStatus(uint256 _certificateId) public view returns (string memory) {
+    function checkCertificateStatus(uint256 _certificateId) public returns (string memory) {
         require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
         
         if (certificates[_certificateId].revoked) {
             return "Revoked";
         }
-        if (
-            certificates[_certificateId].expiryDate != 0 &&
-            block.timestamp > certificates[_certificateId].expiryDate
-        ) {
+
+        if (keccak256(bytes(certificates[_certificateId].status)) == keccak256(bytes("Expired"))) {
             return "Expired";
         }
+
+        if (certificates[_certificateId].expiryDate != 0 && block.timestamp > certificates[_certificateId].expiryDate) {
+            certificates[_certificateId].status = "Expired";
+
+            emit CertificateExpired(_certificateId);
+
+            return "Expired";
+        }
+
         return certificates[_certificateId].status;
     }
 
