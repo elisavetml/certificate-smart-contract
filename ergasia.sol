@@ -1,26 +1,20 @@
-
-// SPDX-License-Identifier: MIT 
-// Δηλώνει την άδεια χρήσης του κώδικα. 
-pragma solidity ^0.8.34; //Δηλώνει ποια έκδοση Solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
 
 contract ergasia {
-
-    //
-    // admin
-
-
-    
-    //
     address public admin;
+    uint256 private nextCertificateId = 1;
 
-    constructor() {
-        admin = msg.sender;
+    enum Role {
+        None,
+        Admin,
+        Issuer,
+        Holder,
+        RevocationOfficer,
+        Auditor,
+        Verifier
     }
 
-
-    //
-    // Structures
-    //
     struct Certificate {
         uint256 certificateId;
         string certificateType;
@@ -33,44 +27,87 @@ contract ergasia {
         bool revoked;
         string revocationReason;
     }
-    
+
     struct User {
         address userAddress;
         string name;
-        uint256 role; // 1: admin, 2: issuer 3: holder 4: revokation officer 5: Auditor
+        Role role;
         bool active;
     }
 
-
-    // storage
-    mapping(uint256 => Certificate) public certificates; //λέει οτι το κλειδι πρέπει να ειναι τυπου uint256 και το item τύπου certificate
-    mapping(address => User) public users; 
+    // Storage
+    mapping(uint256 => Certificate) public certificates;
+    mapping(address => User) public users;
 
     mapping(address => uint256[]) public issuerCertificates;
     mapping(address => uint256[]) public holderCertificates;
     mapping(string => uint256) public certificateByHash;
 
-    
     address[] public allUsers;
     uint256[] public allCertificates;
 
+    // Modifiers
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin");
+        _;
+    }
 
-    uint256 private nextCertificateId = 1;
+    modifier onlyIssuer() {
+        _checkRole(Role.Issuer);
+        _;
+    }
 
+    modifier onlyHolder() {
+        _checkRole(Role.Holder);
+        _;
+    }
 
-    //
-    // Functions
-    //
-   // memory: προσωρινά δεδομένα για όσο εκτελείται η συνάρτηση | storage: μόνιμα δεδομένα στο blockchain
-   // _ εναι για να μας βοηθά να ξεχωρίζουμε οτι ειναι απο παράμετρο
-   //Το memory μπορεί να χρησιμοποιηθεί με τύπους όπως: string array struct mapping. Το uint256 είναι απλός value type
+    modifier onlyRevocationOfficer() {
+        _checkRole(Role.RevocationOfficer);
+        _;
+    }
 
-    //εγγραφή χρηστών με καθορισμό ρόλου, μόνο από διαχειριστή
-   function registerUser(address _userAddress, string memory _name, uint256 _role) public onlyAdmin {
+    modifier onlyAuditorOrVerifier() {
+        require(
+            users[msg.sender].role == Role.Auditor || 
+            users[msg.sender].role == Role.Verifier || 
+            msg.sender == admin,
+            "Not authorized as Auditor or Verifier"
+        );
+        require(users[msg.sender].active, "User is not active");
+        _;
+    }
+
+    function _checkRole(Role role) internal view {
+        require(users[msg.sender].role == role, "Invalid role");
+        require(users[msg.sender].active, "User is not active");
+    }
+
+    // Events
+    event UserRegistered(address indexed userAddress, string name, Role role);
+    event CertificateIssued(uint256 indexed certificateId, address indexed issuer, address indexed holder);
+    event CertificateVerified(uint256 indexed certificateId);
+    event CertificateRevoked(uint256 indexed certificateId, string reason);
+    event CertificateExpired(uint256 certificateId);
+
+    constructor() {
+        admin = msg.sender;
+        users[msg.sender] = User(msg.sender, "Admin", Role.Admin, true);
+        allUsers.push(msg.sender);
+        emit UserRegistered(msg.sender, "Admin", Role.Admin);
+    }
+
+    function registerUser(
+        address _userAddress,
+        string memory _name,
+        Role _role
+    ) public onlyAdmin {
+        require(_userAddress != address(0), "Invalid address");
+        require(users[_userAddress].userAddress == address(0), "User already registered");
+
         users[_userAddress] = User(_userAddress, _name, _role, true);
         allUsers.push(_userAddress);
         emit UserRegistered(_userAddress, _name, _role);
-
     }
 
     function getAllUsers() public view onlyAdmin returns (User[] memory) {
@@ -84,15 +121,34 @@ contract ergasia {
         return resultList;
     }
 
+    function issueCertificate(
+        string memory _certificateType,
+        address _holder,
+        string memory _fileHash,
+        uint256 _issueDate,
+        uint256 _expiryDate
+    ) public onlyIssuer {
+        require(_holder != address(0), "Invalid holder address");
+        require(certificateByHash[_fileHash] == 0, "Hash already exists");
 
-    //έκδοση νέου πιστοποιητικού, μόνο από εξουσιοδοτημένο φορέα έκδοσης
-    function issueCertificate(string memory _certificateType, address _holder, string memory _fileHash, uint256 _issueDate, uint256 _expiryDate) public onlyIssuer{
-        
         uint256 _certificateId = nextCertificateId;
 
-        certificates[_certificateId] = Certificate( _certificateId, _certificateType, msg.sender, _holder, _fileHash, _issueDate, _expiryDate, "Valid", false, "" );
+        certificates[_certificateId] = Certificate(
+            _certificateId,
+            _certificateType,
+            msg.sender,
+            _holder,
+            _fileHash,
+            _issueDate,
+            _expiryDate,
+            "Valid",
+            false,
+            ""
+        );
+
         holderCertificates[_holder].push(_certificateId);
         issuerCertificates[msg.sender].push(_certificateId);
+        certificateByHash[_fileHash] = _certificateId;
         allCertificates.push(_certificateId);
 
         nextCertificateId++;
@@ -111,101 +167,63 @@ contract ergasia {
         return resultList;
     }
 
-
-    // προβολή πιστοποιητικών εκδότη
-    function getIssuerCertificates(address _issuer) public onlyIssuer view returns (uint256[] memory) { 
-        return issuerCertificates[_issuer]; 
+    function getIssuerCertificates(address _issuer) public view onlyIssuer returns (uint256[] memory) {
+        return issuerCertificates[_issuer];
     }
 
-    // προβολή πιστοποιητικών κατόχου
-    function getHolderCertificates(address _holder) public onlyHolder view returns (uint256[] memory) { 
-        return holderCertificates[_holder]; 
+    function getHolderCertificates(address _holder) public view onlyHolder returns (uint256[] memory) {
+        return holderCertificates[_holder];
     }
 
-
-    // o επαλήθευση πιστοποιητικού βάσει certificateId ή fileHash
-    function verifyCertificateById(uint256 _certificateId) public onlyAuditor returns (Certificate memory) { 
-        emit CertificateVerified(_certificateId);
+    function verifyCertificateById(uint256 _certificateId) public view onlyAuditorOrVerifier returns (Certificate memory) {
+        require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
         return certificates[_certificateId];
     }
-    function verifyCertificateByHash(string memory _fileHash) public onlyAuditor returns (Certificate memory) { 
-        uint256 certificateId = certificateByHash[_fileHash]; 
-        emit CertificateVerified(certificateId);
-        return certificates[certificateId]; 
+
+    function verifyCertificateByHash(string memory _fileHash) public view onlyAuditorOrVerifier returns (Certificate memory) {
+        uint256 certificateId = certificateByHash[_fileHash];
+        require(certificateId != 0, "Certificate not found");
+        return certificates[certificateId];
     }
 
-    // ανάκληση πιστοποιητικού, μόνο από εξουσιοδοτημένο ρόλο
-    function revokeCertificate(uint256 _certificateId, string memory _reason) public onlyRevocationOfficer{
-        require(certificates[_certificateId].issuer == msg.sender, "You did not issue this certificate");
+    function revokeCertificate(uint256 _certificateId, string memory _reason) public onlyRevocationOfficer {
+        require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
+        require(!certificates[_certificateId].revoked, "Certificate is already revoked");
+
         certificates[_certificateId].revoked = true;
         certificates[_certificateId].status = "Revoked";
         certificates[_certificateId].revocationReason = _reason;
+        
         emit CertificateRevoked(_certificateId, _reason);
     }
 
-    // έλεγχο κατάστασης πιστοποιητικού
-    function checkCertificateStatus(uint256 _certificateId) public onlyAuditor returns (string memory) {
-        if (block.timestamp > certificates[_certificateId].expiryDate) {
-            emit CertificateExpired(_certificateId);
+    function checkCertificateStatus(uint256 _certificateId) public view returns (string memory) {
+        require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
+        
+        if (certificates[_certificateId].revoked) {
+            return "Revoked";
+        }
+        if (
+            certificates[_certificateId].expiryDate != 0 &&
+            block.timestamp > certificates[_certificateId].expiryDate
+        ) {
+            return "Expired";
         }
         return certificates[_certificateId].status;
     }
 
-    // προβολή όλων των δεδομένων πιστοποιητικού με view συνάρτηση, ανάλογα με τα δικαιώματα πρόσβασης
-    function getCertificate(uint256 _certificateId) public view returns(Certificate memory){
-        Certificate memory certificate = certificates[_certificateId];
-        require( msg.sender == admin || certificate.issuer == msg.sender ||certificate.holder == msg.sender,"Not authorized");
-        return certificate;
+    function getCertificate(uint256 _certificateId) public view returns (Certificate memory) {
+        Certificate memory cert = certificates[_certificateId];
+        require(cert.certificateId != 0, "Certificate does not exist");
+        require(
+            msg.sender == admin ||
+            cert.issuer == msg.sender ||
+            cert.holder == msg.sender ||
+            users[msg.sender].role == Role.Auditor ||
+            users[msg.sender].role == Role.Verifier ||
+            users[msg.sender].role == Role.RevocationOfficer,
+            "Not authorized"
+        );
+        return cert;
     }
-
-
-    //
-    // Modifiers
-    //
-
-    //Στο σημείο που βρίσκεται το _, βάλε τον κώδικα της function.
-    modifier onlyAdmin() {
-    require(msg.sender == admin, "Only admin");
-    _;
-    }
-
-    modifier onlyIssuer() {
-        require(users[msg.sender].role == 2, "Only issuer");
-        require(users[msg.sender].active, "Only active users");
-        _;
-    }
-
-
-     modifier onlyHolder() {
-        require(users[msg.sender].role == 3, "Only holder");
-        require(users[msg.sender].active, "Only active users");
-        _;
-    }
-
-    modifier onlyRevocationOfficer() {
-        require( users[msg.sender].role == 4, "Only revocation officer" );
-        require(users[msg.sender].active, "Only active users");
-        _;
-    }
-
-    modifier onlyAuditor() {
-        require( users[msg.sender].role == 5, "Only auditor" );
-        require(users[msg.sender].active, "Only active users");
-        _;
-    }
-
-    modifier onlyActiveUser() {
-        require( users[msg.sender].active, "User is not active" );
-        _;
-    }
-
-
-    /*********/
-    // Events
-    /*********/
-    event UserRegistered(address userAddress, string name, uint256 role);
-    event CertificateIssued(uint256 certificateId, address issuer, address holder);
-    event CertificateVerified(uint256 certificateId);
-    event CertificateRevoked(uint256 certificateId, string reason);
-    event CertificateExpired(uint256 certificateId);
 }
