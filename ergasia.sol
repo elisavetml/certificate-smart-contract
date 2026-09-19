@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract ergasia {
-    address public admin;
+contract Ergasia {
+    address public immutable admin;
     uint256 private nextCertificateId = 1;
 
     enum Role {
@@ -112,16 +112,16 @@ contract ergasia {
     }
 
     function registerUser(
-        address _userAddress,
-        string memory _name,
-        Role _role
+        address userAddress,
+        string memory name,
+        Role role
     ) public onlyAdmin {
-        require(_userAddress != address(0), "Invalid address");
-        require(users[_userAddress].userAddress == address(0), "User already registered");
+        require(userAddress != address(0), "Invalid address");
+        require(users[userAddress].userAddress == address(0), "User already registered");
 
-        users[_userAddress] = User(_userAddress, _name, _role, true);
-        allUsers.push(_userAddress);
-        emit UserRegistered(_userAddress, _name, _role);
+        users[userAddress] = User(userAddress, name, role, true);
+        allUsers.push(userAddress);
+        emit UserRegistered(userAddress, name, role);
     }
 
     function getAllUsers() public view onlyAdminOrAuditor returns (User[] memory) {
@@ -136,38 +136,38 @@ contract ergasia {
     }
 
     function issueCertificate(
-        string memory _certificateType,
-        address _holder,
-        string memory _fileHash,
-        uint256 _issueDate,
-        uint256 _expiryDate
+        string memory certificateType,
+        address holder,
+        string memory fileHash,
+        uint256 issueDate,
+        uint256 expiryDate
     ) public onlyIssuer {
-        require(_holder != address(0), "Invalid holder address");
-        require(certificateByHash[_fileHash] == 0, "Hash already exists");
+        require(holder != address(0), "Invalid holder address");
+        require(certificateByHash[fileHash] == 0, "Hash already exists");
 
-        uint256 _certificateId = nextCertificateId;
+        uint256 certificateId = nextCertificateId;
 
-        certificates[_certificateId] = Certificate(
-            _certificateId,
-            _certificateType,
+        certificates[certificateId] = Certificate(
+            certificateId,
+            certificateType,
             msg.sender,
-            _holder,
-            _fileHash,
-            _issueDate,
-            _expiryDate,
+            holder,
+            fileHash,
+            issueDate,
+            expiryDate,
             "Valid",
             false,
             ""
         );
 
-        holderCertificates[_holder].push(_certificateId);
-        issuerCertificates[msg.sender].push(_certificateId);
-        certificateByHash[_fileHash] = _certificateId;
-        allCertificates.push(_certificateId);
+        holderCertificates[holder].push(certificateId);
+        issuerCertificates[msg.sender].push(certificateId);
+        certificateByHash[fileHash] = certificateId;
+        allCertificates.push(certificateId);
 
         nextCertificateId++;
 
-        emit CertificateIssued(_certificateId, msg.sender, _holder);
+        emit CertificateIssued(certificateId, msg.sender, holder);
     }
 
     function getAllCertificates() public view onlyAdminOrAuditor returns (Certificate[] memory) {
@@ -181,41 +181,41 @@ contract ergasia {
         return resultList;
     }
 
-    function getIssuerCertificates(address _issuer) public view onlyIssuer returns (uint256[] memory) {
-        return issuerCertificates[_issuer];
+    function getIssuerCertificates(address issuer) public view onlyIssuer returns (uint256[] memory) {
+        return issuerCertificates[issuer];
     }
 
-    function getHolderCertificates(address _holder) public view onlyHolder returns (uint256[] memory) {
-        return holderCertificates[_holder];
+    function getHolderCertificates(address holder) public view onlyHolder returns (uint256[] memory) {
+        return holderCertificates[holder];
     }
 
-    function verifyCertificateById(uint256 _certificateId) public onlyAuditorOrVerifier returns (Certificate memory) {
-        require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
-        emit CertificateVerified(_certificateId, "");
-        return certificates[_certificateId];
-    }
-
-    function verifyCertificateByHash(string memory _fileHash) public onlyAuditorOrVerifier returns (Certificate memory) {
-        uint256 certificateId = certificateByHash[_fileHash];
-        require(certificateId != 0, "Certificate not found");
-        emit CertificateVerified(0, _fileHash);
+    function verifyCertificateById(uint256 certificateId) public onlyAuditorOrVerifier returns (Certificate memory) {
+        require(certificates[certificateId].certificateId != 0, "Certificate does not exist");
+        emit CertificateVerified(certificateId, "");
         return certificates[certificateId];
     }
 
-    function revokeCertificate(uint256 _certificateId, string memory _reason) public onlyRevocationOfficer {
-        require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
-        require(!certificates[_certificateId].revoked, "Certificate is already revoked");
-
-        certificates[_certificateId].revoked = true;
-        certificates[_certificateId].status = "Revoked";
-        certificates[_certificateId].revocationReason = _reason;
-        
-        emit CertificateRevoked(_certificateId, _reason);
+    function verifyCertificateByHash(string memory fileHash) public onlyAuditorOrVerifier returns (Certificate memory) {
+        uint256 certificateId = certificateByHash[fileHash];
+        require(certificateId != 0, "Certificate not found");
+        emit CertificateVerified(0, fileHash);
+        return certificates[certificateId];
     }
 
-    function checkCertificateStatus(uint256 _certificateId) public returns (string memory) {
-        Certificate memory cert = certificates[_certificateId];
-        require(certificates[_certificateId].certificateId != 0, "Certificate does not exist");
+    function revokeCertificate(uint256 certificateId, string memory reason) public onlyRevocationOfficer {
+        require(certificates[certificateId].certificateId != 0, "Certificate does not exist");
+        require(!certificates[certificateId].revoked, "Certificate is already revoked");
+
+        certificates[certificateId].revoked = true;
+        certificates[certificateId].status = "Revoked";
+        certificates[certificateId].revocationReason = reason;
+        
+        emit CertificateRevoked(certificateId, reason);
+    }
+
+    function checkCertificateStatus(uint256 certificateId) public returns (string memory) {
+        Certificate memory cert = certificates[certificateId];
+        require(certificates[certificateId].certificateId != 0, "Certificate does not exist");
         require(
             msg.sender == admin ||
             users[msg.sender].role == Role.Admin ||
@@ -225,27 +225,27 @@ contract ergasia {
             "Not authorized"
         );
         
-        if (certificates[_certificateId].revoked) {
+        if (certificates[certificateId].revoked) {
             return "Revoked";
         }
 
-        if (keccak256(bytes(certificates[_certificateId].status)) == keccak256(bytes("Expired"))) {
+        if (keccak256(bytes(certificates[certificateId].status)) == keccak256(bytes("Expired"))) {
             return "Expired";
         }
 
-        if (certificates[_certificateId].expiryDate != 0 && block.timestamp > certificates[_certificateId].expiryDate) {
-            certificates[_certificateId].status = "Expired";
+        if (certificates[certificateId].expiryDate != 0 && block.timestamp > certificates[certificateId].expiryDate) {
+            certificates[certificateId].status = "Expired";
 
-            emit CertificateExpired(_certificateId);
+            emit CertificateExpired(certificateId);
 
             return "Expired";
         }
 
-        return certificates[_certificateId].status;
+        return certificates[certificateId].status;
     }
 
-    function getCertificate(uint256 _certificateId) public view returns (Certificate memory) {
-        Certificate memory cert = certificates[_certificateId];
+    function getCertificate(uint256 certificateId) public view returns (Certificate memory) {
+        Certificate memory cert = certificates[certificateId];
         require(cert.certificateId != 0, "Certificate does not exist");
         require(
             msg.sender == admin ||
