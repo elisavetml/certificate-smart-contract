@@ -100,7 +100,7 @@ contract Ergasia {
     // Events
     event UserRegistered(address indexed userAddress, string name, Role role);
     event CertificateIssued(uint256 indexed certificateId, address indexed issuer, address indexed holder);
-    event CertificateVerified(uint256 indexed certificateId, string indexed fileHash);
+    event CertificateVerified(uint256 indexed certificateId, string fileHash);
     event CertificateRevoked(uint256 indexed certificateId, string reason);
     event CertificateExpired(uint256 certificateId);
 
@@ -191,14 +191,14 @@ contract Ergasia {
 
     function verifyCertificateById(uint256 certificateId) public onlyAuditorOrVerifier returns (Certificate memory) {
         require(certificates[certificateId].certificateId != 0, "Certificate does not exist");
-        emit CertificateVerified(certificateId, "");
+        emit CertificateVerified(certificateId, certificates[certificateId].fileHash);
         return certificates[certificateId];
     }
 
     function verifyCertificateByHash(string memory fileHash) public onlyAuditorOrVerifier returns (Certificate memory) {
         uint256 certificateId = certificateByHash[fileHash];
         require(certificateId != 0, "Certificate not found");
-        emit CertificateVerified(0, fileHash);
+        emit CertificateVerified(certificateId, fileHash);
         return certificates[certificateId];
     }
 
