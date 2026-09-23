@@ -1,3 +1,4 @@
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -81,12 +82,10 @@ contract Ergasia {
         _;
     }
 
-    modifier onlyAuditorOrVerifier() {
+    modifier onlyVerifier() {
         require(
-            users[msg.sender].role == Role.Auditor || 
-            users[msg.sender].role == Role.Verifier || 
-            msg.sender == admin,
-            "Only Auditor or Verifier"
+            users[msg.sender].role == Role.Verifier ,
+            "Only Verifier"
         );
         require(users[msg.sender].active, "User is not active");
         _;
@@ -100,8 +99,8 @@ contract Ergasia {
     // Events
     event UserRegistered(address indexed userAddress, string name, Role role);
     event CertificateIssued(uint256 indexed certificateId, address indexed issuer, address indexed holder);
-    event CertificateVerified(uint256 indexed certificateId, string fileHash);
-    event CertificateRevoked(uint256 indexed certificateId, string reason);
+    event CertificateVerified(uint256 indexed certificateId, string fileHash, address indexed verifier);
+    event CertificateRevoked(uint256 indexed certificateId, string reason, address indexed revocationOfficer);
     event CertificateExpired(uint256 certificateId);
 
     constructor() {
@@ -189,16 +188,16 @@ contract Ergasia {
         return holderCertificates[holder];
     }
 
-    function verifyCertificateById(uint256 certificateId) public onlyAuditorOrVerifier returns (Certificate memory) {
+    function verifyCertificateById(uint256 certificateId) public onlyVerifier returns (Certificate memory) {
         require(certificates[certificateId].certificateId != 0, "Certificate does not exist");
-        emit CertificateVerified(certificateId, certificates[certificateId].fileHash);
+        emit CertificateVerified(certificateId, certificates[certificateId].fileHash, msg.sender);
         return certificates[certificateId];
     }
 
-    function verifyCertificateByHash(string memory fileHash) public onlyAuditorOrVerifier returns (Certificate memory) {
+    function verifyCertificateByHash(string memory fileHash) public onlyVerifier returns (Certificate memory) {
         uint256 certificateId = certificateByHash[fileHash];
         require(certificateId != 0, "Certificate not found");
-        emit CertificateVerified(certificateId, fileHash);
+        emit CertificateVerified(certificateId, fileHash, msg.sender);
         return certificates[certificateId];
     }
 
@@ -210,7 +209,7 @@ contract Ergasia {
         certificates[certificateId].status = "Revoked";
         certificates[certificateId].revocationReason = reason;
         
-        emit CertificateRevoked(certificateId, reason);
+        emit CertificateRevoked(certificateId, reason, msg.sender);
     }
 
     function checkCertificateStatus(uint256 certificateId) public returns (string memory) {
