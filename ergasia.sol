@@ -190,6 +190,8 @@ contract Ergasia {
 
     function verifyCertificateById(uint256 certificateId) public onlyVerifier returns (Certificate memory) {
         require(certificates[certificateId].certificateId != 0, "Certificate does not exist");
+        require(!certificates[certificateId].revoked, "Certificate has been revoked");
+        require(keccak256(bytes(certificates[certificateId].status)) == keccak256(bytes("Expired")), "Certificate has been expired");
         emit CertificateVerified(certificateId, certificates[certificateId].fileHash, msg.sender);
         return certificates[certificateId];
     }
@@ -197,6 +199,8 @@ contract Ergasia {
     function verifyCertificateByHash(string memory fileHash) public onlyVerifier returns (Certificate memory) {
         uint256 certificateId = certificateByHash[fileHash];
         require(certificateId != 0, "Certificate not found");
+        require(!certificates[certificateId].revoked, "Certificate has been revoked");
+        require(keccak256(bytes(certificates[certificateId].status)) == keccak256(bytes("Expired")), "Certificate has been expired");
         emit CertificateVerified(certificateId, fileHash, msg.sender);
         return certificates[certificateId];
     }
